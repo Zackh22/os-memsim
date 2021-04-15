@@ -39,6 +39,44 @@ int main(int argc, char **argv)
     while (command != "exit") {
         // Handle command
         // TODO: implement this!
+        if(command == "create"){ //create <text_size> <data_size>
+            //assign a process id
+            //allocate some amount of startup memory for the process
+                //text/code: size of binary executable - user specified number (2048-16384 bytes)
+                //Data/Globals: size of global variables - user specified number (0 - 1024 bytes)
+                //Stack: constant (65536 bytes)
+            //prints the PID
+        }else if(command == "allocate"){ //allocate <PID> <var_name> <data_type> <number_of_elements>
+            //Allocated memory on the heap (how mcuch depends on the data type and the number of elements)
+                //N chars (N bytes)
+                //N shorts (N * 2 bytes)
+                //N ints/floats (N * 4 bytes)
+                //N longs/doubles (N * 8 bytes)
+            //print the virtual memory address
+        }else if(command == "set"){ //set <PID> <var_name> <offset> <value_0> <value_2> ... <value_N>
+            //sote integer, float, or character values in memeory
+            //Set the value for the variable <var_name> starting at <offset>
+            //NOTE: multiple contiguous values can be set with one command
+        }else if(command == "print"){ //print <object>
+            //if <object> is "mmu", print the MMU memory table
+            //if <object> is "page", print the page table (do not need to print anything for free frames)
+            //if <object> is "process", print a list of PID's for processes that are still running
+            //if <object> is a "<PID>":<var_name>", print the value of the variable for that process"
+                //If variable has more than 4 elements, just print the first 4 followed by "... [N items]" (where N is the number of elements)
+        }else if(command == "free"){ //free <PID> <var_name>
+            //Deallocate memory on the heap that is associated with <var_name>
+                //N chars (N bytes)
+                //N shorts (N * 2 bytes)
+                //N ints/floats (N * 4 bytes)
+                //N longs/doubles (N * 8 bytes)
+                //Can multiple contiguous vales be deallocated with one command?
+        }else if(command == "terminate"){ //terminate <PID>
+            //Kill the specified process
+            //Free all memory associated with this process
+            //Deallocate all memory associated with the process
+        }else{ //error
+            std::cout << "error: command not recognized" << std::endl;
+        }
 
         // Get next command
         std::cout << "> ";
@@ -73,9 +111,15 @@ void printStartMessage(int page_size)
 void createProcess(int text_size, int data_size, Mmu *mmu, PageTable *page_table)
 {
     // TODO: implement this!
-    //   - create new process in the MMU
+    //   - create new process in the MMU 
+    uint32_t pid = mmu->createProcess();
     //   - allocate new variables for the <TEXT>, <GLOBALS>, and <STACK>
+    
+    allocateVariable(pid, "<TEXT>", Char, 1, mmu, page_table);
+    allocateVariable(pid, "<GLOBALS>", Char, 1, mmu, page_table);
+    allocateVariable(pid, "<STACK>", Char, 1, mmu, page_table);
     //   - print pid
+    std::cout << pid;
 }
 
 void allocateVariable(uint32_t pid, std::string var_name, DataType type, uint32_t num_elements, Mmu *mmu, PageTable *page_table)
