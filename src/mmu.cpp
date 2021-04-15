@@ -2,7 +2,7 @@
 
 Mmu::Mmu(int memory_size)
 {
-    _next_pid = 1024;
+    _next_pid = 1024; // update this in initialize; increment by 1
     _max_size = memory_size;
 }
 
