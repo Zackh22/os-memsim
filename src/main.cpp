@@ -27,6 +27,7 @@ int main(int argc, char **argv)
     // Create physical 'memory'
     uint32_t mem_size = 67108864;
     void *memory = malloc(mem_size); // 64 MB (64 * 1024 * 1024)
+    //for setting or printing a variable
 
     // Create MMU and Page Table
     Mmu *mmu = new Mmu(mem_size);
@@ -114,10 +115,10 @@ void createProcess(int text_size, int data_size, Mmu *mmu, PageTable *page_table
     //   - create new process in the MMU 
     uint32_t pid = mmu->createProcess();
     //   - allocate new variables for the <TEXT>, <GLOBALS>, and <STACK>
-    
-    allocateVariable(pid, "<TEXT>", Char, 1, mmu, page_table);
-    allocateVariable(pid, "<GLOBALS>", Char, 1, mmu, page_table);
-    allocateVariable(pid, "<STACK>", Char, 1, mmu, page_table);
+    //find first space that is big enough for them (1 + pages)
+    allocateVariable(pid, "<TEXT>", Char, text_size, mmu, page_table);
+    allocateVariable(pid, "<GLOBALS>", Char, data_size, mmu, page_table);
+    allocateVariable(pid, "<STACK>", Char, 65536, mmu, page_table);
     //   - print pid
     std::cout << pid;
 }
@@ -125,6 +126,11 @@ void createProcess(int text_size, int data_size, Mmu *mmu, PageTable *page_table
 void allocateVariable(uint32_t pid, std::string var_name, DataType type, uint32_t num_elements, Mmu *mmu, PageTable *page_table)
 {
     // TODO: implement this!
+    //first search the page table to see if there is a location your variable will fit w/o allocating a new page.
+    //if there is space then dont need to touch page table at all.
+    //2 bytes left on page but trying to allocate 2 byte integer -> DO NOt SPLit an individual item accros pages. need to have contiguous memory addresses
+    //in mmu loop through adn find the free space variables.  
+    //to know what page to pass in to the page table.addentry -> add methods to page table
     //   - find first free space within a page already allocated to this process that is large enough to fit the new variable
     //   - if no hole is large enough, allocate new page(s)
     //   - insert variable into MMU
