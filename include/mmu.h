@@ -12,7 +12,7 @@ typedef struct Variable {
     DataType type;
     uint32_t virtual_address;
     uint32_t size;
-} Variable;
+} Variable; 
 
 typedef struct Process {
     uint32_t pid;
@@ -32,6 +32,7 @@ public:
     uint32_t createProcess();
     void addVariableToProcess(uint32_t pid, std::string var_name, DataType type, uint32_t size, uint32_t address);
     void print();
+    Variable* getVariable(uint32_t pid, std::string var_name);
 };
 
 #endif // __MMU_H_

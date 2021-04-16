@@ -10,6 +10,7 @@ void allocateVariable(uint32_t pid, std::string var_name, DataType type, uint32_
 void setVariable(uint32_t pid, std::string var_name, uint32_t offset, void *value, Mmu *mmu, PageTable *page_table, void *memory);
 void freeVariable(uint32_t pid, std::string var_name, Mmu *mmu, PageTable *page_table);
 void terminateProcess(uint32_t pid, Mmu *mmu, PageTable *page_table);
+void splitString(std::string text, char d, std::vector<std::string>& result);
 
 int main(int argc, char **argv)
 {
@@ -37,41 +38,45 @@ int main(int argc, char **argv)
     std::string command;
     std::cout << "> ";
     std::getline (std::cin, command);
-    while (command != "exit") {
+    std::vector<std::string> commandSplit;
+    splitString(command, ' ', commandSplit);
+    while (commandSplit.at(0) != "exit") {
         // Handle command
         // TODO: implement this!
-        if(command == "create"){ //create <text_size> <data_size>
+
+        if(commandSplit.at(0) == "create"){ //create <text_size> <data_size>
+            std::cout << "CREATE" << std::endl;
             //assign a process id
             //allocate some amount of startup memory for the process
                 //text/code: size of binary executable - user specified number (2048-16384 bytes)
                 //Data/Globals: size of global variables - user specified number (0 - 1024 bytes)
                 //Stack: constant (65536 bytes)
             //prints the PID
-        }else if(command == "allocate"){ //allocate <PID> <var_name> <data_type> <number_of_elements>
+        }else if(commandSplit.at(0) == "allocate"){ //allocate <PID> <var_name> <data_type> <number_of_elements>
             //Allocated memory on the heap (how mcuch depends on the data type and the number of elements)
                 //N chars (N bytes)
                 //N shorts (N * 2 bytes)
                 //N ints/floats (N * 4 bytes)
                 //N longs/doubles (N * 8 bytes)
             //print the virtual memory address
-        }else if(command == "set"){ //set <PID> <var_name> <offset> <value_0> <value_2> ... <value_N>
+        }else if(commandSplit.at(0) == "set"){ //set <PID> <var_name> <offset> <value_0> <value_2> ... <value_N>
             //sote integer, float, or character values in memeory
             //Set the value for the variable <var_name> starting at <offset>
             //NOTE: multiple contiguous values can be set with one command
-        }else if(command == "print"){ //print <object>
+        }else if(commandSplit.at(0) == "print"){ //print <object>
             //if <object> is "mmu", print the MMU memory table
             //if <object> is "page", print the page table (do not need to print anything for free frames)
             //if <object> is "process", print a list of PID's for processes that are still running
             //if <object> is a "<PID>":<var_name>", print the value of the variable for that process"
                 //If variable has more than 4 elements, just print the first 4 followed by "... [N items]" (where N is the number of elements)
-        }else if(command == "free"){ //free <PID> <var_name>
+        }else if(commandSplit.at(0) == "free"){ //free <PID> <var_name>
             //Deallocate memory on the heap that is associated with <var_name>
                 //N chars (N bytes)
                 //N shorts (N * 2 bytes)
                 //N ints/floats (N * 4 bytes)
                 //N longs/doubles (N * 8 bytes)
                 //Can multiple contiguous vales be deallocated with one command?
-        }else if(command == "terminate"){ //terminate <PID>
+        }else if(commandSplit.at(0) == "terminate"){ //terminate <PID>
             //Kill the specified process
             //Free all memory associated with this process
             //Deallocate all memory associated with the process
@@ -80,8 +85,10 @@ int main(int argc, char **argv)
         }
 
         // Get next command
+        std::cout << std::endl;
         std::cout << "> ";
         std::getline (std::cin, command);
+        splitString(command, ' ', commandSplit);
     }
 
     // Cean up
@@ -116,16 +123,53 @@ void createProcess(int text_size, int data_size, Mmu *mmu, PageTable *page_table
     uint32_t pid = mmu->createProcess();
     //   - allocate new variables for the <TEXT>, <GLOBALS>, and <STACK>
     //find first space that is big enough for them (1 + pages)
-    allocateVariable(pid, "<TEXT>", Char, text_size, mmu, page_table);
-    allocateVariable(pid, "<GLOBALS>", Char, data_size, mmu, page_table);
-    allocateVariable(pid, "<STACK>", Char, 65536, mmu, page_table);
+    allocateVariable(pid, "<TEXT>", DataType::Char, text_size, mmu, page_table);
+    allocateVariable(pid, "<GLOBALS>", DataType::Char, data_size, mmu, page_table);
+    allocateVariable(pid, "<STACK>", DataType::Char, 65536, mmu, page_table);
     //   - print pid
     std::cout << pid;
 }
 
 void allocateVariable(uint32_t pid, std::string var_name, DataType type, uint32_t num_elements, Mmu *mmu, PageTable *page_table)
 {
+    //CHECK FOR IF THIS ALLOCATION WOULD EXCEED SYSTEM MEMOMRY (in bytes) 67108864!!
     // TODO: implement this!
+    // mmu->_processes->variables --> see if this equals free space then get the variable and call the size. Have a check fo PID;
+    // If space is big enough then put variable there. 
+    uint32_t newVarSize;
+    if(type == DataType::Char){
+        newVarSize = num_elements;
+    }else if(type == DataType::Double || type == DataType::Long){
+        newVarSize = num_elements * 8;
+    }else if(type == DataType::Float || type == DataType::Int){
+        newVarSize = num_elements * 4;
+    }else if(type == DataType::Short){
+        newVarSize = num_elements * 2;
+    }
+
+    Variable* freeSpace = mmu->getVariable(pid, "<FREE_SPACE>");
+
+    if(!(freeSpace == NULL)){
+        uint32_t newVarAddress = freeSpace->virtual_address;
+        if(freeSpace->size >= newVarSize){
+            //add var to mmu
+            freeSpace->size = (freeSpace->size - newVarSize);
+            freeSpace->virtual_address = (freeSpace->virtual_address + newVarSize);
+            mmu->addVariableToProcess(pid, var_name, type, newVarSize, newVarAddress);
+            //update page table
+            //page_table->addEntry(pid, page_table->getPageNumber(newVarAddress));
+
+            //print virtual address
+            std::cout << newVarAddress;
+        }else {
+            // throw error -> out of space! No allocation happens!
+        }
+    }
+
+
+
+    //addVariableToProcess(uint32_t pid, std::string var_name, DataType type, uint32_t size, uint32_t address)
+
     //first search the page table to see if there is a location your variable will fit w/o allocating a new page.
     //if there is space then dont need to touch page table at all.
     //2 bytes left on page but trying to allocate 2 byte integer -> DO NOt SPLit an individual item accros pages. need to have contiguous memory addresses
@@ -134,7 +178,9 @@ void allocateVariable(uint32_t pid, std::string var_name, DataType type, uint32_
     //   - find first free space within a page already allocated to this process that is large enough to fit the new variable
     //   - if no hole is large enough, allocate new page(s)
     //   - insert variable into MMU
-    //   - print virtual memory address
+    //   - print virtual memory address (adding on the size in hex)
+    // only use actual memory when setting and printing a variable.
+
 }
 
 void setVariable(uint32_t pid, std::string var_name, uint32_t offset, void *value, Mmu *mmu, PageTable *page_table, void *memory)
@@ -158,4 +204,60 @@ void terminateProcess(uint32_t pid, Mmu *mmu, PageTable *page_table)
     // TODO: implement this!
     //   - remove process from MMU
     //   - free all pages associated with given process
+}
+
+void splitString(std::string text, char d, std::vector<std::string>& result)
+{
+    enum states { NONE, IN_WORD, IN_STRING } state = NONE;
+
+    int i;
+    std::string token;
+    result.clear();
+    for (i = 0; i < text.length(); i++)
+    {
+        char c = text[i];
+        switch (state) {
+            case NONE:
+                if (c != d)
+                {
+                    if (c == '\"')
+                    {
+                        state = IN_STRING;
+                        token = "";
+                    }
+                    else
+                    {
+                        state = IN_WORD;
+                        token = c;
+                    }
+                }
+                break;
+            case IN_WORD:
+                if (c == d)
+                {
+                    result.push_back(token);
+                    state = NONE;
+                }
+                else
+                {
+                    token += c;
+                }
+                break;
+            case IN_STRING:
+                if (c == '\"')
+                {
+                    result.push_back(token);
+                    state = NONE;
+                }
+                else
+                {
+                    token += c;
+                }
+                break;
+        }
+    }
+    if (state != NONE)
+    {
+        result.push_back(token);
+    }
 }

@@ -2,7 +2,7 @@
 
 Mmu::Mmu(int memory_size)
 {
-    _next_pid = 1024; // update this in initialize; increment by 1
+    _next_pid = 1024;
     _max_size = memory_size;
 }
 
@@ -38,7 +38,7 @@ void Mmu::addVariableToProcess(uint32_t pid, std::string var_name, DataType type
         {
             proc = _processes[i];
         }
-    }
+    } 
 
     Variable *var = new Variable();
     var->name = var_name;
@@ -64,4 +64,17 @@ void Mmu::print()
             // TODO: print all variables (excluding <FREE_SPACE> entries)
         }
     }
+}
+
+Variable* Mmu::getVariable(uint32_t pid, std::string var_name){
+    for(int i = 0; i < _processes.size(); i++){
+        if(_processes.at(i)->pid == pid){
+            for(int j = 0; j < _processes.at(i)->variables.size(); j++){
+                if(_processes.at(i)->variables.at(j)->name == var_name){
+                    return _processes.at(i)->variables.at(j);
+                }
+            }
+        }
+    }
+    return NULL;
 }
