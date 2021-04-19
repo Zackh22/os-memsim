@@ -37,6 +37,7 @@ public:
     int getPhysicalAddress(uint32_t pid, uint32_t virtual_address);
     void print();
     int getPageNumber(uint32_t virtual_address);
+    int getPageNumberRounded(uint32_t virtual_address);
 };
 
 #endif // __PAGETABLE_H_

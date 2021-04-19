@@ -11,6 +11,8 @@ void setVariable(uint32_t pid, std::string var_name, uint32_t offset, void *valu
 void freeVariable(uint32_t pid, std::string var_name, Mmu *mmu, PageTable *page_table);
 void terminateProcess(uint32_t pid, Mmu *mmu, PageTable *page_table);
 void splitString(std::string text, char d, std::vector<std::string>& result);
+int allNums(std::string checkString);
+void printVariable(uint32_t pid, std::string var_name, Mmu *mmu, PageTable *page_table, void *memory);
 
 int main(int argc, char **argv)
 {
@@ -42,16 +44,19 @@ int main(int argc, char **argv)
     splitString(command, ' ', commandSplit);
     while (commandSplit.at(0) != "exit") {
         // Handle command
-        // TODO: implement this!
-
         if(commandSplit.at(0) == "create"){ //create <text_size> <data_size>
             std::cout << "CREATE" << std::endl;
+            int textSize = allNums(commandSplit.at(1));
+            int dataSize = allNums(commandSplit.at(2));
+            createProcess(textSize, dataSize, mmu, page_table);
+            
             //assign a process id
             //allocate some amount of startup memory for the process
                 //text/code: size of binary executable - user specified number (2048-16384 bytes)
                 //Data/Globals: size of global variables - user specified number (0 - 1024 bytes)
                 //Stack: constant (65536 bytes)
             //prints the PID
+            std::cout << std::endl;
         }else if(commandSplit.at(0) == "allocate"){ //allocate <PID> <var_name> <data_type> <number_of_elements>
             //Allocated memory on the heap (how mcuch depends on the data type and the number of elements)
                 //N chars (N bytes)
@@ -59,39 +64,118 @@ int main(int argc, char **argv)
                 //N ints/floats (N * 4 bytes)
                 //N longs/doubles (N * 8 bytes)
             //print the virtual memory address
+            uint32_t pid = allNums(commandSplit.at(1));
+            if(mmu->processExists(pid)){
+                std::string varName = commandSplit.at(2);
+                Variable *var = mmu->getVariable(pid, varName);
+                if(var == NULL){
+                    DataType type;
+                    if(commandSplit.at(3) == "char"){
+                        type = DataType::Char;
+                    }else if(commandSplit.at(3) == "double"){
+                        type = DataType::Double;
+                    }else if(commandSplit.at(3) == "Float"){
+                        type = DataType::Float;
+                    }else if(commandSplit.at(3) == "int"){
+                        type = DataType::Int;
+                    }else if(commandSplit.at(3) == "long"){
+                        type = DataType::Long;
+                    }else if(commandSplit.at(3) == "short"){
+                        type = DataType::Short;
+                    }
+                    uint32_t numElements = allNums(commandSplit.at(4));
+                    allocateVariable(pid, varName, type, numElements, mmu, page_table);
+                }else {
+                    std::cout << "error: variable already exists";
+                }                
+            }else {
+                std::cout << "error: process not found";
+            }
+            std::cout << std::endl;
         }else if(commandSplit.at(0) == "set"){ //set <PID> <var_name> <offset> <value_0> <value_2> ... <value_N>
+            uint32_t pid = allNums(commandSplit.at(1));
+            if(mmu->processExists(pid)){
+                std::string varName = commandSplit.at(2);
+                Variable *var = mmu->getVariable(pid, varName);
+                if(var != NULL){
+                    //do setting process here
+                    uint32_t offset = allNums(commandSplit.at(3));
+                    uint32_t offsetInc = offset;
+                    for(int i = 4; i < commandSplit.size(); i++){
+                        std::string value = commandSplit.at(i);
+                        setVariable(pid, varName, offsetInc, &value, mmu, page_table, memory);
+                        offsetInc++;
+                    }
+                }else {
+                    std::cout << "error: variable not found"<<std::endl;
+                }
+            }else {
+                std::cout << "error: process not found" <<std::endl;
+            }
             //sote integer, float, or character values in memeory
             //Set the value for the variable <var_name> starting at <offset>
             //NOTE: multiple contiguous values can be set with one command
         }else if(commandSplit.at(0) == "print"){ //print <object>
             //if <object> is "mmu", print the MMU memory table
-            //if <object> is "page", print the page table (do not need to print anything for free frames)
-            //if <object> is "process", print a list of PID's for processes that are still running
-            //if <object> is a "<PID>":<var_name>", print the value of the variable for that process"
+            if(commandSplit.at(1) == "mmu"){
+                mmu->print();
+            }else if(commandSplit.at(1) == "page"){  //if <object> is "page", print the page table (do not need to print anything for free frames)
+                page_table->print();
+            }else if(commandSplit.at(1) == "processes"){//if <object> is "process", print a list of PID's for processes that are still running
+                mmu->printProcesses();
+            }else{ 
+                //if <object> is a "<PID>":<var_name>", print the value of the variable for that process"
                 //If variable has more than 4 elements, just print the first 4 followed by "... [N items]" (where N is the number of elements)
+                std::string toSplit = ":";
+                std::string tempString = commandSplit.at(1);
+                size_t position = tempString.find(toSplit);
+                std::string stringPid = tempString.substr(0,position);
+                uint32_t pid = allNums(stringPid);
+                tempString.erase(0, (position + toSplit.length()));
+                printVariable(pid, tempString, mmu, page_table, memory);
+            }
         }else if(commandSplit.at(0) == "free"){ //free <PID> <var_name>
+            uint32_t pid = allNums(commandSplit.at(1));
+            if(mmu->processExists(pid)){
+                std::string varName = commandSplit.at(2);
+                Variable *var = mmu->getVariable(pid, varName);
+                if(var != NULL){
+                    //do freeing process here
+                }else {
+                    std::cout << "error: variable not found";
+                }
+            }else {
+                std::cout << "error: process not found";
+            }
             //Deallocate memory on the heap that is associated with <var_name>
                 //N chars (N bytes)
                 //N shorts (N * 2 bytes)
                 //N ints/floats (N * 4 bytes)
                 //N longs/doubles (N * 8 bytes)
                 //Can multiple contiguous vales be deallocated with one command?
+            std::cout << std::endl;
         }else if(commandSplit.at(0) == "terminate"){ //terminate <PID>
+            uint32_t pid = allNums(commandSplit.at(1));
+            if(mmu->processExists(pid)){
+                //do termination process here
+            }else {
+                std::cout << "error: process not found";
+            }
             //Kill the specified process
             //Free all memory associated with this process
             //Deallocate all memory associated with the process
+            std::cout << std::endl;
         }else{ //error
             std::cout << "error: command not recognized" << std::endl;
         }
 
         // Get next command
-        std::cout << std::endl;
         std::cout << "> ";
         std::getline (std::cin, command);
         splitString(command, ' ', commandSplit);
     }
 
-    // Cean up
+    // Clean up
     free(memory);
     delete mmu;
     delete page_table;
@@ -118,7 +202,6 @@ void printStartMessage(int page_size)
 
 void createProcess(int text_size, int data_size, Mmu *mmu, PageTable *page_table)
 {
-    // TODO: implement this!
     //   - create new process in the MMU 
     uint32_t pid = mmu->createProcess();
     //   - allocate new variables for the <TEXT>, <GLOBALS>, and <STACK>
@@ -133,7 +216,6 @@ void createProcess(int text_size, int data_size, Mmu *mmu, PageTable *page_table
 void allocateVariable(uint32_t pid, std::string var_name, DataType type, uint32_t num_elements, Mmu *mmu, PageTable *page_table)
 {
     //CHECK FOR IF THIS ALLOCATION WOULD EXCEED SYSTEM MEMOMRY (in bytes) 67108864!!
-    // TODO: implement this!
     // mmu->_processes->variables --> see if this equals free space then get the variable and call the size. Have a check fo PID;
     // If space is big enough then put variable there. 
     uint32_t newVarSize;
@@ -157,18 +239,24 @@ void allocateVariable(uint32_t pid, std::string var_name, DataType type, uint32_
             freeSpace->virtual_address = (freeSpace->virtual_address + newVarSize);
             mmu->addVariableToProcess(pid, var_name, type, newVarSize, newVarAddress);
             //update page table
-            //page_table->addEntry(pid, page_table->getPageNumber(newVarAddress));
+            int startPage = page_table->getPageNumberRounded(newVarAddress);
+            int endPage = page_table->getPageNumberRounded(freeSpace->virtual_address);
+            int difference = endPage - startPage;
+            if(!difference == 0){
+                for(int i = startPage; i < endPage; i++){
+                    page_table->addEntry(pid, i);
+                }
+            }
 
             //print virtual address
-            std::cout << newVarAddress;
+            if(var_name != "<TEXT>" && var_name != "<GLOBALS>" && var_name != "<STACK>"){
+                std::cout << newVarAddress;
+            }
         }else {
-            // throw error -> out of space! No allocation happens!
+            // throw error -> out of space! No allocation happens!???
+            std::cout << "no allocate?";
         }
     }
-
-
-
-    //addVariableToProcess(uint32_t pid, std::string var_name, DataType type, uint32_t size, uint32_t address)
 
     //first search the page table to see if there is a location your variable will fit w/o allocating a new page.
     //if there is space then dont need to touch page table at all.
@@ -180,13 +268,66 @@ void allocateVariable(uint32_t pid, std::string var_name, DataType type, uint32_
     //   - insert variable into MMU
     //   - print virtual memory address (adding on the size in hex)
     // only use actual memory when setting and printing a variable.
-
 }
 
 void setVariable(uint32_t pid, std::string var_name, uint32_t offset, void *value, Mmu *mmu, PageTable *page_table, void *memory)
 {
-    // TODO: implement this!
     //   - look up physical address for variable based on its virtual address / offset
+    Variable *var = mmu->getVariable(pid, var_name);
+    DataType type = var->type;
+    uint32_t size;
+    std::string *x = static_cast<std::string*>(value);
+    std::string::size_type sz;
+    
+    if(type == DataType::Char){
+        size = 1;
+        char val = *x->c_str();
+        int offsetMultiplied = offset * size;
+        int physicalAddress = page_table->getPhysicalAddress(pid, (var->virtual_address + offsetMultiplied));
+        memcpy((uint8_t*)memory + physicalAddress, &val, size);
+    }else if(type == DataType::Double){
+        size = 8;
+        double val = std::stod(*x, &sz);
+        int offsetMultiplied = offset * size;
+        int physicalAddress = page_table->getPhysicalAddress(pid, (var->virtual_address + offsetMultiplied));
+        memcpy((uint8_t*)memory + physicalAddress, &val, size);
+    }else if(type == DataType::Long){
+        size = 8;
+        long val = std::stol(*x, &sz);
+        int offsetMultiplied = offset * size;
+        uint32_t virtAddress = (var->virtual_address + offsetMultiplied);
+        int physicalAddress = page_table->getPhysicalAddress(pid, virtAddress);
+        int t = page_table->getPhysicalAddress(pid, var->virtual_address);
+
+        memcpy((uint8_t*)memory + physicalAddress, &val, size);
+    }
+    else if(type == DataType::Float){
+        size = 4;
+        float val = std::stof(*x, &sz);
+        int offsetMultiplied = offset * size;
+        int physicalAddress = page_table->getPhysicalAddress(pid, (var->virtual_address + offsetMultiplied));
+        memcpy((uint8_t*)memory + physicalAddress, &val, size);
+    }else if(type == DataType::Int){
+        size = 4;
+        int val = std::stoi(*x, &sz);
+        int offsetMultiplied = offset * size;
+        int physicalAddress = page_table->getPhysicalAddress(pid, (var->virtual_address + offsetMultiplied));
+        memcpy((uint8_t*)memory + physicalAddress, &val, size);
+    }else if(type == DataType::Short){
+        size = 2;
+        short val = std::stoi(*x, &sz);
+        int offsetMultiplied = offset * size;
+        int physicalAddress = page_table->getPhysicalAddress(pid, (var->virtual_address + offsetMultiplied));
+        memcpy((uint8_t*)memory + physicalAddress, &val, size);
+    }
+    //std::string *x = static_cast<std::string*>(value);
+    //int *x = static_cast<int*>(value);
+    //int val = *x;
+    // int val = allNums(*x);
+    
+    //int val = *(int*)value;
+    // std::cout << "value is: " << value << " &value is " << &value <<std::endl;
+    // std::cout << "VAL is: "<< val << " &VAL is: "<< &val <<std::endl;
     //   - insert `value` into `memory` at physical address
     //   * note: this function only handles a single element (i.e. you'll need to call this within a loop when setting
     //           multiple elements of an array)
@@ -205,6 +346,104 @@ void terminateProcess(uint32_t pid, Mmu *mmu, PageTable *page_table)
     //   - remove process from MMU
     //   - free all pages associated with given process
 }
+
+void printVariable(uint32_t pid, std::string var_name, Mmu *mmu, PageTable *page_table, void *memory){
+    Variable *var = mmu->getVariable(pid, var_name);
+    DataType type = var->type;
+    uint32_t size;
+    uint32_t add;
+    int physicalAddress = page_table->getPhysicalAddress(pid, var->virtual_address);
+    uint32_t totalVarSize = var->size;
+    int count = 0;
+
+    if(type == DataType::Char){
+        size = 1;
+        char value;
+        for(int i = 0; i < totalVarSize; i+=size){
+            int physicalAddressOffset = physicalAddress + i;
+            if(count < 4){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << value << ", ";
+            }
+            count++;
+        }
+        if(count > 4){
+            std::cout << "... ["<<(count-4)<<" items]";
+        }
+    }else if(type == DataType::Double){
+        size = 8;
+        double value;
+        for(int i = 0; i < totalVarSize; i+=size){
+            int physicalAddressOffset = physicalAddress + i;
+            if(count < 4){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << value << ", ";
+            }
+            count++;
+        }
+        if(count > 4){
+            std::cout << "... ["<<(count-4)<<" items]";
+        }
+    }else if(type == DataType::Long){
+        size = 8;
+        long value;
+        for(int i = 0; i < totalVarSize; i+=size){
+            int physicalAddressOffset = physicalAddress + i;
+            if(count < 4){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << value << ", ";
+            }
+            count++;
+        }
+        if(count > 4){
+            std::cout << "... ["<<(count)<<" items]";
+        }
+    }else if(type == DataType::Float){
+        size = 4;
+        float value;
+        for(int i = 0; i < totalVarSize; i+=size){
+            int physicalAddressOffset = physicalAddress + i;
+            if(count < 4){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << value << ", ";
+            }
+            count++;
+        }
+        if(count > 4){
+            std::cout << "... ["<<(count-4)<<" items]";
+        }
+    }else if(type == DataType::Int){
+        size = 4;
+        int value;
+        for(int i = 0; i < totalVarSize; i+=size){
+            int physicalAddressOffset = physicalAddress + i;
+            if(count < 4){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << value << ", ";
+            }
+            count++;
+        }
+        if(count > 4){
+            std::cout << "... ["<<(count-4)<<" items]";
+        }
+    }else if(type == DataType::Short){
+        size = 2;
+        short value;
+        for(int i = 0; i < totalVarSize; i+=size){
+            int physicalAddressOffset = physicalAddress + i;
+            if(count < 4){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << value << ", ";
+            }
+            count++;
+        }
+        if(count > 4){
+            std::cout << "... ["<<(count-4)<<" items]";
+        }
+    }
+    std::cout << std::endl;
+}
+
 
 void splitString(std::string text, char d, std::vector<std::string>& result)
 {
@@ -260,4 +499,17 @@ void splitString(std::string text, char d, std::vector<std::string>& result)
     {
         result.push_back(token);
     }
+}
+
+/*
+    checkString: text to check if it is all numbers
+    returns the string as an int if checkString is an int and -1 if it is not
+*/
+int allNums(std::string checkString){
+    for(int i = 0; i < checkString.length(); i++){
+        if(isdigit(checkString[i]) == false){
+            return -1;
+        }
+    }
+    return atoi(checkString.c_str());
 }
