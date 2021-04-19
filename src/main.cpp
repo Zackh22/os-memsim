@@ -45,7 +45,6 @@ int main(int argc, char **argv)
     while (commandSplit.at(0) != "exit") {
         // Handle command
         if(commandSplit.at(0) == "create"){ //create <text_size> <data_size>
-            std::cout << "CREATE" << std::endl;
             int textSize = allNums(commandSplit.at(1));
             int dataSize = allNums(commandSplit.at(2));
             createProcess(textSize, dataSize, mmu, page_table);
@@ -235,26 +234,27 @@ void allocateVariable(uint32_t pid, std::string var_name, DataType type, uint32_
         uint32_t newVarAddress = freeSpace->virtual_address;
         if(freeSpace->size >= newVarSize){
             //add var to mmu
-            freeSpace->size = (freeSpace->size - newVarSize);
-            freeSpace->virtual_address = (freeSpace->virtual_address + newVarSize);
-            mmu->addVariableToProcess(pid, var_name, type, newVarSize, newVarAddress);
-            //update page table
-            int startPage = page_table->getPageNumberRounded(newVarAddress);
-            int endPage = page_table->getPageNumberRounded(freeSpace->virtual_address);
-            int difference = endPage - startPage;
-            if(!difference == 0){
-                for(int i = startPage; i < endPage; i++){
-                    page_table->addEntry(pid, i);
+            if(mmu->spaceLeft(newVarSize)){
+                freeSpace->size = (freeSpace->size - newVarSize);
+                freeSpace->virtual_address = (freeSpace->virtual_address + newVarSize);
+                mmu->addVariableToProcess(pid, var_name, type, newVarSize, newVarAddress);
+                //update page table
+                int startPage = page_table->getPageNumberRounded(newVarAddress);
+                int endPage = page_table->getPageNumberRounded(freeSpace->virtual_address);
+                int difference = endPage - startPage;
+                if(!difference == 0){
+                    for(int i = startPage; i < endPage; i++){
+                        page_table->addEntry(pid, i);
+                    }
                 }
-            }
 
-            //print virtual address
-            if(var_name != "<TEXT>" && var_name != "<GLOBALS>" && var_name != "<STACK>"){
-                std::cout << newVarAddress;
+                //print virtual address
+                if(var_name != "<TEXT>" && var_name != "<GLOBALS>" && var_name != "<STACK>"){
+                    std::cout << newVarAddress;
+                }
+            }else {
+                std::cout << "Allocation would exceed system memory"<<std::endl;
             }
-        }else {
-            // throw error -> out of space! No allocation happens!???
-            std::cout << "no allocate?";
         }
     }
 

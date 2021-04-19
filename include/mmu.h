@@ -35,6 +35,7 @@ public:
     Variable* getVariable(uint32_t pid, std::string var_name);
     bool processExists(uint32_t pid);
     void printProcesses();
+    bool spaceLeft(int size);
 };
 
 #endif // __MMU_H_

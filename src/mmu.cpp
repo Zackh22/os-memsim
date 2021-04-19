@@ -100,3 +100,23 @@ void Mmu::printProcesses(){
         std::cout<<_processes[i]->pid<<std::endl;
     }
 }
+
+bool Mmu::spaceLeft(int size){
+    uint32_t mem_size = 67108864;
+    uint32_t memUsed = size;
+
+    for(int i = 0; i < _processes.size(); i++){
+        for(int j = 0; j < _processes[i]->variables.size(); j++){
+            std::string varName = _processes[i]->variables[j]->name;
+            if(varName != "<FREE_SPACE>"){
+                memUsed = memUsed + _processes[i]->variables[j]->size;
+            }
+        }
+    }
+
+    if(memUsed <= mem_size){
+        return true;
+    }else {
+        return false;
+    }
+}
