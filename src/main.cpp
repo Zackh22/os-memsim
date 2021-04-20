@@ -3,6 +3,7 @@
 #include <cstring>
 #include "mmu.h"
 #include "pagetable.h"
+#include <math.h>
 
 void printStartMessage(int page_size);
 void createProcess(int text_size, int data_size, Mmu *mmu, PageTable *page_table);
@@ -140,11 +141,12 @@ int main(int argc, char **argv)
                 Variable *var = mmu->getVariable(pid, varName);
                 if(var != NULL){
                     //do freeing process here
+                    freeVariable(pid, var->name, mmu, page_table);
                 }else {
-                    std::cout << "error: variable not found";
+                    std::cout << "error: variable not found" << std::endl;
                 }
             }else {
-                std::cout << "error: process not found";
+                std::cout << "error: process not found" << std::endl;
             }
             //Deallocate memory on the heap that is associated with <var_name>
                 //N chars (N bytes)
@@ -152,18 +154,17 @@ int main(int argc, char **argv)
                 //N ints/floats (N * 4 bytes)
                 //N longs/doubles (N * 8 bytes)
                 //Can multiple contiguous vales be deallocated with one command?
-            std::cout << std::endl;
         }else if(commandSplit.at(0) == "terminate"){ //terminate <PID>
             uint32_t pid = allNums(commandSplit.at(1));
             if(mmu->processExists(pid)){
                 //do termination process here
+                terminateProcess(pid, mmu, page_table);
             }else {
-                std::cout << "error: process not found";
+                std::cout << "error: process not found" << std::endl;
             }
             //Kill the specified process
             //Free all memory associated with this process
             //Deallocate all memory associated with the process
-            std::cout << std::endl;
         }else{ //error
             std::cout << "error: command not recognized" << std::endl;
         }
@@ -218,42 +219,90 @@ void allocateVariable(uint32_t pid, std::string var_name, DataType type, uint32_
     // mmu->_processes->variables --> see if this equals free space then get the variable and call the size. Have a check fo PID;
     // If space is big enough then put variable there. 
     uint32_t newVarSize;
+    int typeSize;
     if(type == DataType::Char){
         newVarSize = num_elements;
+        typeSize = 1;
     }else if(type == DataType::Double || type == DataType::Long){
         newVarSize = num_elements * 8;
+        typeSize = 8;
     }else if(type == DataType::Float || type == DataType::Int){
         newVarSize = num_elements * 4;
+        typeSize = 4;
     }else if(type == DataType::Short){
         newVarSize = num_elements * 2;
+        typeSize = 2;
     }
 
-    Variable* freeSpace = mmu->getVariable(pid, "<FREE_SPACE>");
+    //Variable* freeSpace = mmu->getVariable(pid, "<FREE_SPACE>");
+    std::vector<Variable*> allProcessVars = mmu->getAllVars(pid);
 
-    if(!(freeSpace == NULL)){
-        uint32_t newVarAddress = freeSpace->virtual_address;
-        if(freeSpace->size >= newVarSize){
-            //add var to mmu
-            if(mmu->spaceLeft(newVarSize)){
-                freeSpace->size = (freeSpace->size - newVarSize);
-                freeSpace->virtual_address = (freeSpace->virtual_address + newVarSize);
-                mmu->addVariableToProcess(pid, var_name, type, newVarSize, newVarAddress);
-                //update page table
-                int startPage = page_table->getPageNumberRounded(newVarAddress);
-                int endPage = page_table->getPageNumberRounded(freeSpace->virtual_address);
-                int difference = endPage - startPage;
-                if(!difference == 0){
-                    for(int i = startPage; i < endPage; i++){
-                        page_table->addEntry(pid, i);
-                    }
+    for(int m = 0; m < allProcessVars.size(); m++){  //checks all vars bc there can be multiple free space vars
+        if(allProcessVars[m]->name == "<FREE_SPACE>"){ 
+            Variable* freeSpace = allProcessVars[m];
+            uint32_t newVarAddress = freeSpace->virtual_address;
+            int newVarPageNum = page_table->getPageNumber(newVarAddress);
+            if(freeSpace->size >= newVarSize){
+                //add var to mmu
+                if(mmu->spaceLeft(newVarSize)){
+                    // freeSpace->size = (freeSpace->size - newVarSize);
+                    // freeSpace->virtual_address = (freeSpace->virtual_address + newVarSize);
+                    //do a check to see if there is space left on the page.
+                        //get remaining page space
+                    int remainingPageSpace = mmu->getRemainingSpaceOnPage(pid, newVarAddress, page_table->getPageSize(), newVarPageNum);
+                    //if page can fit one element ->put on page 
+                    if(remainingPageSpace >= typeSize){
+                        freeSpace->size = (freeSpace->size - newVarSize);
+                        freeSpace->virtual_address = (freeSpace->virtual_address + newVarSize);
+                        //at lease 1 element of var will fit on page
+                        mmu->addVariableToProcess(pid, var_name, type, newVarSize, newVarAddress);
+                        //update page table
+                        int startPage = page_table->getPageNumber(newVarAddress);
+                        float pageSizeForRounding = page_table->getPageSize();
+                        int endPage = ceil(freeSpace->virtual_address / pageSizeForRounding);
+                        int difference = endPage - startPage;
+                        if(!difference == 0){
+                            for(int i = startPage; i < endPage; i++){
+                                page_table->addEntry(pid, i);
+                            }
+                        }
+                        //print virtual address
+                        if(var_name != "<TEXT>" && var_name != "<GLOBALS>" && var_name != "<STACK>"){
+                            std::cout << newVarAddress;
+                        }
+                    }else{
+                        //page does not have room for 1 element of var
+                        //if remaining space size > 0
+                        if(remainingPageSpace > 0){
+                            if(freeSpace->size - remainingPageSpace >= newVarSize){ 
+                                freeSpace->size = (freeSpace->size - remainingPageSpace - newVarSize);
+                                freeSpace->virtual_address = (freeSpace->virtual_address + remainingPageSpace + newVarSize);
+                                //create smaller free space var (virtual address same)->size = remainingSpaceOnPage
+                                mmu->addVariableToProcess(pid, "<FREE_SPACE>", DataType::FreeSpace, remainingPageSpace, newVarAddress);
+                                //move newVarVirtualAddress to be newVarVirtualAddress + remainingPageSpace
+                                newVarAddress = newVarAddress + remainingPageSpace;
+                                mmu->addVariableToProcess(pid, var_name, type, newVarSize, newVarAddress);
+                                //update page table
+                                int startPage = page_table->getPageNumber(newVarAddress);
+                                float pageSizeForRounding = page_table->getPageSize();
+                                int endPage = ceil(freeSpace->virtual_address / pageSizeForRounding);
+                                int difference = endPage - startPage;
+                                if(!difference == 0){
+                                    for(int i = startPage; i < endPage; i++){
+                                        page_table->addEntry(pid, i);
+                                    }
+                                }
+                                //print virtual address
+                                if(var_name != "<TEXT>" && var_name != "<GLOBALS>" && var_name != "<STACK>"){
+                                    std::cout << newVarAddress;
+                                }
+                            } //else free space is no longer big enough so we do can't add var to this freespace
+                        }
+                    }   
+                }else {
+                    std::cout << "Allocation would exceed system memory"<<std::endl;
+                    break;
                 }
-
-                //print virtual address
-                if(var_name != "<TEXT>" && var_name != "<GLOBALS>" && var_name != "<STACK>"){
-                    std::cout << newVarAddress;
-                }
-            }else {
-                std::cout << "Allocation would exceed system memory"<<std::endl;
             }
         }
     }
@@ -335,16 +384,64 @@ void setVariable(uint32_t pid, std::string var_name, uint32_t offset, void *valu
 
 void freeVariable(uint32_t pid, std::string var_name, Mmu *mmu, PageTable *page_table)
 {
-    // TODO: implement this!
     //   - remove entry from MMU
+    Variable *var = mmu->getVariable(pid, var_name);
+    var->name = "<FREE_SPACE>";
+    var->type = DataType::FreeSpace;
+    int pageNumStart = page_table->getPageNumber(var->virtual_address);
+    int pageNumEnd = page_table->getPageNumber(var->virtual_address + var->size);
+    int countOfVarsOnPage[(pageNumEnd-pageNumStart)+1] = {0};
+    int countStartPage = 0;
+    int countEndPage = 0;
+
+    // figure out if the page (s) that the var to be freed is on have more than just that var
+    std::vector<Variable*> allVarsForProcess = mmu->getAllVars(pid);
+    for(int i = 0; i < allVarsForProcess.size(); i++){
+        if(allVarsForProcess[i]->name != "<FREE_SPACE>"){
+            int varsStartPageNum = page_table->getPageNumber(allVarsForProcess[i]->virtual_address);
+            int varsEndPageNum = page_table->getPageNumber(allVarsForProcess[i]->virtual_address + allVarsForProcess[i]->size);
+            // if(varsStartPageNum == pageNumStart || varsEndPageNum == pageNumStart){
+            //     countStartPage++;
+            // }else if(varsStartPageNum == pageNumEnd || varsEndPageNum == pageNumEnd){
+            //     countEndPage++;
+            // }
+            if((varsStartPageNum - pageNumStart >= 0) && (varsStartPageNum - pageNumStart < (pageNumEnd-pageNumStart)+1)){
+                countOfVarsOnPage[varsStartPageNum - pageNumStart]++;
+            }else if((varsStartPageNum - pageNumEnd >= 0) && (varsStartPageNum - pageNumEnd < (pageNumEnd-pageNumStart)+1)){
+                countOfVarsOnPage[varsStartPageNum - pageNumStart]++;
+            }else if((varsEndPageNum - pageNumStart >= 0) && (varsEndPageNum - pageNumStart < (pageNumEnd-pageNumStart)+1)){
+                countOfVarsOnPage[varsStartPageNum - pageNumStart]++;
+            }else if((varsEndPageNum - pageNumEnd >= 0) && (varsEndPageNum - pageNumEnd < (pageNumEnd-pageNumStart)+1)){
+                countOfVarsOnPage[varsStartPageNum - pageNumStart]++;
+            }
+        }
+    }
+
+    for(int j = 0; j < (pageNumEnd-pageNumStart+1); j++){
+        if(countOfVarsOnPage[j] == 0){
+            page_table->removeEntry(pid, (pageNumStart + j));
+        }
+    }
+
+    mmu->mergeFreeSpace(var->virtual_address, var->size, pid);
+    
     //   - free page if this variable was the only one on a given page
+    // check virtual address and virtual address + size to see if they are on different pages
+    //entry pid|pageNum
+    //loop through all the entries and if there is 
+    //how to find amount of vars on a page
+    // - check front and end page of newly freed var.
 }
 
 void terminateProcess(uint32_t pid, Mmu *mmu, PageTable *page_table)
 {
-    // TODO: implement this!
-    //   - remove process from MMU
     //   - free all pages associated with given process
+    std::vector<Variable*> processVars = mmu->getAllVars(pid);
+    for(int i = 0; i < processVars.size(); i++){
+        freeVariable(pid, processVars[i]->name, mmu, page_table);
+    }
+    //   - remove process from MMU
+    mmu->removeProcess(pid);
 }
 
 void printVariable(uint32_t pid, std::string var_name, Mmu *mmu, PageTable *page_table, void *memory){
@@ -361,84 +458,108 @@ void printVariable(uint32_t pid, std::string var_name, Mmu *mmu, PageTable *page
         char value;
         for(int i = 0; i < totalVarSize; i+=size){
             int physicalAddressOffset = physicalAddress + i;
-            if(count < 4){
+            if(count == 0){
                 memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
-                std::cout << value << ", ";
+                std::cout << value;
+            }
+            if(count < 4 && count > 0){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << ", " << value;
             }
             count++;
         }
         if(count > 4){
-            std::cout << "... ["<<(count-4)<<" items]";
+            std::cout << ", ... ["<<(count)<<" items]";
         }
     }else if(type == DataType::Double){
         size = 8;
         double value;
         for(int i = 0; i < totalVarSize; i+=size){
             int physicalAddressOffset = physicalAddress + i;
-            if(count < 4){
+            if(count == 0){
                 memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
-                std::cout << value << ", ";
+                std::cout << value;
+            }
+            if(count < 4 && count > 0){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << ", " << value;
             }
             count++;
         }
         if(count > 4){
-            std::cout << "... ["<<(count-4)<<" items]";
+            std::cout << ", ... ["<<(count)<<" items]";
         }
     }else if(type == DataType::Long){
         size = 8;
         long value;
         for(int i = 0; i < totalVarSize; i+=size){
             int physicalAddressOffset = physicalAddress + i;
-            if(count < 4){
+            if(count == 0){
                 memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
-                std::cout << value << ", ";
+                std::cout << value;
+            }
+            if(count < 4 && count > 0){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << ", " << value;
             }
             count++;
         }
         if(count > 4){
-            std::cout << "... ["<<(count)<<" items]";
+            std::cout << ", ... ["<<(count)<<" items]";
         }
     }else if(type == DataType::Float){
         size = 4;
         float value;
         for(int i = 0; i < totalVarSize; i+=size){
             int physicalAddressOffset = physicalAddress + i;
-            if(count < 4){
+            if(count == 0){
                 memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
-                std::cout << value << ", ";
+                std::cout << value;
+            }
+            if(count < 4 && count > 0){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << ", " << value;
             }
             count++;
         }
         if(count > 4){
-            std::cout << "... ["<<(count-4)<<" items]";
+            std::cout << ", ... ["<<(count)<<" items]";
         }
     }else if(type == DataType::Int){
         size = 4;
         int value;
         for(int i = 0; i < totalVarSize; i+=size){
             int physicalAddressOffset = physicalAddress + i;
-            if(count < 4){
+            if(count == 0){
                 memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
-                std::cout << value << ", ";
+                std::cout << value;
+            }
+            if(count < 4 && count > 0){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << ", " << value;
             }
             count++;
         }
         if(count > 4){
-            std::cout << "... ["<<(count-4)<<" items]";
+            std::cout << ", ... ["<<(count)<<" items]";
         }
     }else if(type == DataType::Short){
         size = 2;
         short value;
         for(int i = 0; i < totalVarSize; i+=size){
             int physicalAddressOffset = physicalAddress + i;
-            if(count < 4){
+            if(count == 0){
                 memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
-                std::cout << value << ", ";
+                std::cout << value;
+            }
+            if(count < 4 && count > 0){
+                memcpy(&value, (uint8_t*)memory + physicalAddressOffset, size);
+                std::cout << ", " << value;
             }
             count++;
         }
         if(count > 4){
-            std::cout << "... ["<<(count-4)<<" items]";
+            std::cout << ", ... ["<<(count)<<" items]";
         }
     }
     std::cout << std::endl;

@@ -36,6 +36,11 @@ public:
     bool processExists(uint32_t pid);
     void printProcesses();
     bool spaceLeft(int size);
+    void mergeFreeSpace(uint32_t address, uint32_t size, uint32_t pid);
+    void numVarsOnPage(uint32_t address, uint32_t size, uint32_t pid);
+    std::vector<Variable*> getAllVars(uint32_t);
+    int getRemainingSpaceOnPage(uint32_t pid, uint32_t virtual_address, int page_size, int page_num);
+    void removeProcess(uint32_t pid);
 };
 
 #endif // __MMU_H_

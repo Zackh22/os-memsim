@@ -29,24 +29,35 @@ void PageTable::addEntry(uint32_t pid, int page_number)
 {
     // Combination of pid and page number act as the key to look up frame number
     std::string entry = std::to_string(pid) + "|" + std::to_string(page_number);
+    int arrToTrackOpenFrames[(67108864 / _page_size)] = {0};
+    if(_table.count(entry) == 0){ //entry is NOT in table yet
+        int frame = 0; 
+        // Find free frame
+        if(!_table.empty()){
+            for(const auto &i : _table){
+                arrToTrackOpenFrames[i.second] = 1; // marking this frame in arr as one that is used in page table
+                if(i.second >= frame){
+                    frame = i.second;
+                }
+            }
+            frame++;
+        }
 
-    int frame = 0; 
-    // Find free frame
-    if(!_table.empty()){
-        for(const auto &i : _table){
-            if(i.second >= frame){
-                frame = i.second;
+        for(int i = 0; i < frame; i++){
+            if(arrToTrackOpenFrames[i] == 0){
+                //frame is not in current table entries so it should be used first
+                frame = i;
             }
         }
-        frame++;
+
+        _table[entry] = frame; 
     }
-    _table[entry] = frame; 
 }
 
 int PageTable::getPhysicalAddress(uint32_t pid, uint32_t virtual_address)
 {
     // Convert virtual address to page_number and page_offset
-    int page_number = virtual_address / _page_size; 
+    int page_number = getPageNumber(virtual_address); 
     int page_offset = virtual_address % _page_size; 
 
     // Combination of pid and page number act as the key to look up frame number
@@ -87,6 +98,11 @@ int PageTable::getPageNumber(uint32_t virtual_address){
     return virtual_address / _page_size;
 }
 
-int PageTable::getPageNumberRounded(uint32_t virtual_address){
-    return ceil(((float)virtual_address / _page_size));
+int PageTable::getPageSize(){
+    return _page_size;
+}
+
+void PageTable::removeEntry(uint32_t pid, int page_number){
+    std::string entry = std::to_string(pid) + "|" + std::to_string(page_number);
+    _table.erase(entry);
 }
